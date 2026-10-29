@@ -18,7 +18,7 @@ BinWeaver memory-maps files strictly read-only and never executes or loads them.
 - **Battle-Tested Accuracy:** Cross-checked with **0 differences** against `pefile`, `dnfile`, and `pyelftools` across 5,500+ real-world system binaries (`System32`, `SysWOW64`, GAC, and `manylinux` wheels).
 - **CI/CD Ready:** Structured JSON output (`schema_version 2`), deterministic exit codes, custom rule matching, and standalone HTML reports.
 
----
+----
 
 ## Features
 

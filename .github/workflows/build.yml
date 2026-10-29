@@ -1,0 +1,74 @@
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  linux-core:
+    name: Linux ${{ matrix.compiler }} ${{ matrix.build_type }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { compiler: gcc, cxx: g++, build_type: Release }
+          - { compiler: clang, cxx: clang++, build_type: Release }
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBINWEAVER_BUILD_BENCH=ON
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure
+
+  linux-sanitizers:
+    name: Linux clang ASan+UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug "-DBINWEAVER_SANITIZE=address;undefined"
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+
+  linux-fuzz:
+    name: libFuzzer (5 minutes)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBINWEAVER_FUZZ=ON -DBINWEAVER_BUILD_TESTS=OFF "-DBINWEAVER_SANITIZE=address;undefined"
+      - run: cmake --build build --parallel
+      - run: |
+          mkdir -p work && cp -r tests/corpus/* work/
+          ./build/fuzz/binweaver-fuzz -max_total_time=300 -max_len=65536 -timeout=10 -rss_limit_mb=2048 work/pe work/elf work/misc
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: crash-*
+
+  windows-msvc:
+    name: Windows MSVC
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBINWEAVER_BUILD_BENCH=ON
+      - run: cmake --build build --config Release --parallel
+      - run: ctest --test-dir build -C Release --output-on-failure
+
+  gui:
+    name: Qt GUI ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          cache: true
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libfontconfig1
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBINWEAVER_BUILD_GUI=ON
+      - run: cmake --build build --config Release --parallel
+      - run: ctest --test-dir build -C Release --output-on-failure

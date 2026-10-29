@@ -1,0 +1,32 @@
+# Example rules for binweaver-cli match (format: docs/RULES.md).
+# They describe structure and byte content; a match is an observation, not a verdict.
+
+rule upx_packed
+  tags packer
+  text $marker = "UPX!"
+  hex $stub = 60 BE ?? ?? ?? ?? 8D BE ?? ?? ?? ??
+  condition 2
+end
+
+rule process_injection_imports
+  tags capability
+  import $alloc = kernel32.dll!VirtualAllocEx
+  import $write = kernel32.dll!WriteProcessMemory
+  import $thread = kernel32.dll!CreateRemoteThread
+  condition all
+end
+
+rule self_extracting_overlay
+  tags installer
+  scope overlay
+  hex $zip = 50 4B 03 04
+  hex $7z = 37 7A BC AF 27 1C
+  condition any
+end
+
+rule fixture_exports_forwarder
+  tags test
+  scope section .rdata
+  text $fwd = "KERNEL32.ExitProcess"
+  condition any
+end
